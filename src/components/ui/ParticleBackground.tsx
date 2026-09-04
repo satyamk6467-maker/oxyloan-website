@@ -60,6 +60,7 @@ export default function ParticleBackground() {
 
       for (let i = 0; i < particles.length; i++) {
         const p = particles[i];
+        if (!p) continue;
         p.x += p.vx;
         p.y += p.vy;
 
@@ -73,6 +74,7 @@ export default function ParticleBackground() {
 
         for (let j = i + 1; j < particles.length; j++) {
           const q = particles[j];
+          if (!q) continue;
           const dx = p.x - q.x;
           const dy = p.y - q.y;
           const dist = Math.sqrt(dx * dx + dy * dy);
