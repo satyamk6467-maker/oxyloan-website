@@ -1,0 +1,452 @@
+pragma solidity ^0.8.28;
+
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import "@openzeppelin/contracts/access/Ownable2Step.sol";
+import "@openzeppelin/contracts/utils/Pausable.sol";
+
+contract OxyLoanCentral is Ownable2Step, Pausable {
+    using SafeERC20 for IERC20;
+
+    // =============================================================
+    // USDT CONFIGURATION
+    // =============================================================
+
+    IERC20 public immutable usdt;
+    IERC20 public immutable oxyToken;
+
+    uint256 public constant BPS = 10_000;
+
+    // 50% of recorded investment
+    uint256 public constant TREASURY_BPS = 5_000;
+
+    // 50% of recorded investment
+    uint256 public constant LIQUIDITY_BPS = 5_000;
+    uint256 public constant MIN_INVESTMENT = 36 * 10 ** 18;
+    uint256 public constant MAX_INVESTMENT = 40_000 * 10 ** 18;
+
+    // Principal lock period: 3 years
+    // Using days because Solidity 0.8.28 deprecates "years".
+    uint256 public constant PRINCIPAL_LOCK = 1095 days;
+
+    // =============================================================
+    // REWARD RATE TIERS
+    // =============================================================
+
+    // Monthly reward rates, expressed in basis points.
+    uint256 public constant REWARD_RATE_6_BPS = 600;    // 6%
+    uint256 public constant REWARD_RATE_10_BPS = 1000;  // 10%
+    uint256 public constant REWARD_RATE_11_BPS = 1100;  // 11%
+    uint256 public constant REWARD_RATE_12_BPS = 1200;  // 12%
+    uint256 public constant REWARD_RATE_15_BPS = 1500;  // 15%
+
+    uint256 public constant TIER_1000 = 1_000 * 10 ** 18;
+    uint256 public constant TIER_2000 = 2_000 * 10 ** 18;
+    uint256 public constant TIER_3000 = 3_000 * 10 ** 18;
+    uint256 public constant TIER_5000 = 5_000 * 10 ** 18;
+
+
+    // =============================================================
+    // INVESTMENT ACCOUNTING
+    // =============================================================
+
+    struct Investment {
+        uint256 amount;
+        uint256 timestamp;
+        uint256 unlockTime;
+        uint256 treasuryAllocation;
+        uint256 liquidityAllocation;
+        bool repaid;
+    }
+
+    mapping(address => Investment[]) private investments;
+
+    // =============================================================
+    // REWARD ACCOUNTING
+    // =============================================================
+
+    struct RewardAccount {
+        uint256 cumulativeInvestment;
+        uint256 lastAccrualTime;
+        uint256 rewardRateBPS;
+        uint256 accruedReward;
+    }
+
+    mapping(address => RewardAccount) private rewardAccounts;
+
+
+    // =============================================================
+    // SYSTEM ADDRESSES
+    // =============================================================
+
+    address public rewardTreasury;
+    address public liquidityManager;
+
+
+    // =============================================================
+    // EVENTS
+    // =============================================================
+
+    event RewardTreasuryUpdated(
+        address indexed previousTreasury,
+        address indexed newTreasury
+    );
+
+    event LiquidityManagerUpdated(
+        address indexed previousManager,
+        address indexed newManager
+    );
+
+    event InvestmentRecorded(
+        address indexed investor,
+        uint256 amount,
+        uint256 treasuryAllocation,
+        uint256 liquidityAllocation,
+        uint256 unlockTime
+    );
+
+
+    // =============================================================
+    // CONSTRUCTOR
+    // =============================================================
+
+    constructor(
+        address initialOwner,
+        address usdtToken,
+        address oxyTokenAddress,
+        address initialRewardTreasury,
+        address initialLiquidityManager
+    )
+        Ownable(initialOwner)
+    {
+        require(
+            initialOwner != address(0),
+            "Invalid owner"
+        );
+
+        require(
+            usdtToken != address(0),
+            "Invalid USDT"
+        );
+        require(
+            oxyTokenAddress != address(0),
+            "Invalid OXY"
+        );
+
+        require(
+            initialRewardTreasury != address(0),
+            "Invalid treasury"
+        );
+
+        require(
+            initialLiquidityManager != address(0),
+            "Invalid liquidity manager"
+        );
+
+        usdt = IERC20(usdtToken);
+        oxyToken = IERC20(oxyTokenAddress);
+
+        rewardTreasury = initialRewardTreasury;
+        liquidityManager = initialLiquidityManager;
+    }
+
+
+    // =============================================================
+    // TREASURY CONTROL
+    // =============================================================
+
+    function setRewardTreasury(
+        address newTreasury
+    )
+        external
+        onlyOwner
+    {
+        require(
+            newTreasury != address(0),
+            "Invalid treasury"
+        );
+
+        address previousTreasury = rewardTreasury;
+
+        rewardTreasury = newTreasury;
+
+        emit RewardTreasuryUpdated(
+            previousTreasury,
+            newTreasury
+        );
+    }
+
+
+    // =============================================================
+    // LIQUIDITY CONTROL
+    // =============================================================
+
+    function setLiquidityManager(
+        address newManager
+    )
+        external
+        onlyOwner
+    {
+        require(
+            newManager != address(0),
+            "Invalid manager"
+        );
+
+        address previousManager = liquidityManager;
+
+        liquidityManager = newManager;
+
+        emit LiquidityManagerUpdated(
+            previousManager,
+            newManager
+        );
+    }
+
+
+    // =============================================================
+    // REWARD RATE
+    // =============================================================
+
+    function getRewardRate(uint256 cumulativeInvestment)
+        public
+        pure
+        returns (uint256)
+    {
+        if (cumulativeInvestment < TIER_1000) {
+            return REWARD_RATE_6_BPS;
+        }
+
+        if (cumulativeInvestment < TIER_2000) {
+            return REWARD_RATE_10_BPS;
+        }
+
+        if (cumulativeInvestment < TIER_3000) {
+            return REWARD_RATE_11_BPS;
+        }
+
+        if (cumulativeInvestment < TIER_5000) {
+            return REWARD_RATE_12_BPS;
+        }
+
+        return REWARD_RATE_15_BPS;
+    }
+
+    // =============================================================
+    // REWARD ACCRUAL
+    // =============================================================
+
+    function _accrueRewards(address investor) internal {
+        RewardAccount storage account = rewardAccounts[investor];
+
+        if (
+            account.cumulativeInvestment == 0 ||
+            account.lastAccrualTime == 0
+        ) {
+            account.lastAccrualTime = block.timestamp;
+            return;
+        }
+
+        uint256 elapsed = block.timestamp - account.lastAccrualTime;
+
+        if (elapsed == 0) {
+            return;
+        }
+
+        uint256 reward = (
+            account.cumulativeInvestment
+            * account.rewardRateBPS
+            * elapsed
+        ) / BPS / 30 days;
+
+        account.accruedReward += reward;
+        account.lastAccrualTime = block.timestamp;
+    }
+
+    // =============================================================
+    // INVESTMENT
+    // =============================================================
+
+    function invest(uint256 amount)
+        external
+        whenNotPaused
+    {
+        require(
+            amount >= MIN_INVESTMENT,
+            "Investment below minimum"
+        );
+
+        require(
+            amount <= MAX_INVESTMENT,
+            "Investment above maximum"
+        );
+
+        // Accrue rewards earned before this investment/upgrade.
+        _accrueRewards(msg.sender);
+
+        uint256 treasuryAmount =
+            (amount * TREASURY_BPS) / BPS;
+
+        uint256 liquidityAmount =
+            (amount * LIQUIDITY_BPS) / BPS;
+
+        require(
+            treasuryAmount + liquidityAmount == amount,
+            "Invalid allocation"
+        );
+
+        usdt.safeTransferFrom(
+            msg.sender,
+            rewardTreasury,
+            treasuryAmount
+        );
+
+        usdt.safeTransferFrom(
+            msg.sender,
+            liquidityManager,
+            liquidityAmount
+        );
+
+        uint256 unlockTime =
+            block.timestamp + PRINCIPAL_LOCK;
+
+        investments[msg.sender].push(
+            Investment({
+                amount: amount,
+                timestamp: block.timestamp,
+                unlockTime: unlockTime,
+                treasuryAllocation: treasuryAmount,
+                liquidityAllocation: liquidityAmount,
+                repaid: false
+            })
+        );
+
+        RewardAccount storage account = rewardAccounts[msg.sender];
+
+        account.cumulativeInvestment += amount;
+        account.rewardRateBPS =
+            getRewardRate(account.cumulativeInvestment);
+
+        if (account.lastAccrualTime == 0) {
+            account.lastAccrualTime = block.timestamp;
+        }
+
+        emit InvestmentRecorded(
+            msg.sender,
+            amount,
+            treasuryAmount,
+            liquidityAmount,
+            unlockTime
+        );
+    }
+
+    // =============================================================
+    // PRINCIPAL REPAYMENT
+    // =============================================================
+
+    function repayPrincipal(
+        address investor,
+        uint256 investmentIndex
+    )
+        external
+        onlyOwner
+    {
+        require(
+            investor != address(0),
+            "Invalid investor"
+        );
+
+        require(
+            investmentIndex < investments[investor].length,
+            "Invalid investment"
+        );
+
+        Investment storage investment =
+            investments[investor][investmentIndex];
+
+        require(
+            block.timestamp >= investment.unlockTime,
+            "Principal still locked"
+        );
+
+        require(
+            !investment.repaid,
+            "Principal already repaid"
+        );
+
+        require(
+            usdt.balanceOf(rewardTreasury) >= investment.amount,
+            "Insufficient treasury balance"
+        );
+
+        require(
+            usdt.allowance(rewardTreasury, address(this)) >= investment.amount,
+            "Insufficient treasury allowance"
+        );
+
+        investment.repaid = true;
+
+        usdt.safeTransferFrom(
+            rewardTreasury,
+            investor,
+            investment.amount
+        );
+    }
+
+    // =============================================================
+    // REWARD ACCOUNT VIEWS
+    // =============================================================
+
+    function getRewardAccount(
+        address investor
+    )
+        external
+        view
+        returns (
+            uint256 cumulativeInvestment,
+            uint256 lastAccrualTime,
+            uint256 rewardRateBPS,
+            uint256 accruedReward
+        )
+    {
+        RewardAccount memory account = rewardAccounts[investor];
+
+        return (
+            account.cumulativeInvestment,
+            account.lastAccrualTime,
+            account.rewardRateBPS,
+            account.accruedReward
+        );
+    }
+
+    // =============================================================
+    // INVESTMENT VIEWS
+    // =============================================================
+
+    function getInvestments(
+        address investor
+    )
+        external
+        view
+        returns (Investment[] memory)
+    {
+        return investments[investor];
+    }
+
+    // =============================================================
+    // EMERGENCY PAUSE
+    // =============================================================
+
+    function pause()
+        external
+        onlyOwner
+    {
+        _pause();
+    }
+
+    function unpause()
+        external
+        onlyOwner
+    {
+        _unpause();
+    }
+}

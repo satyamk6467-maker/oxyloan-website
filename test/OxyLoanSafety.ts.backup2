@@ -1,0 +1,253 @@
+import assert from "node:assert/strict";
+import { test } from "node:test";
+import hre from "hardhat";
+
+async function setup() {
+  const connection = await hre.network.create();
+  const { viem } = connection;
+
+  const [owner, investor, treasury, liquidity] =
+    await viem.getWalletClients();
+
+  const mockUsdt = await viem.deployContract("MockUSDT");
+
+  const central = await viem.deployContract("OxyLoanCentral", [
+    owner.account.address,
+    mockUsdt.address,
+    treasury.account.address,
+    liquidity.account.address,
+  ]);
+
+  return {
+    viem,
+    owner,
+    investor,
+    treasury,
+    liquidity,
+    mockUsdt,
+    central,
+  };
+}
+
+test("Minimum investment: 36 USDT accepted", async () => {
+  const {
+    investor,
+    mockUsdt,
+    central,
+  } = await setup();
+
+  const amount = 36n * 10n ** 18n;
+
+  await mockUsdt.write.mint([
+    investor.account.address,
+    amount,
+  ]);
+
+  await mockUsdt.write.approve(
+    [central.address, amount],
+    { account: investor.account }
+  );
+
+  await central.write.invest(
+    [amount],
+    { account: investor.account }
+  );
+});
+
+test("Investment below 36 USDT is rejected", async () => {
+  const {
+    investor,
+    mockUsdt,
+    central,
+  } = await setup();
+
+  const amount = 35n * 10n ** 18n;
+
+  await mockUsdt.write.mint([
+    investor.account.address,
+    amount,
+  ]);
+
+  await mockUsdt.write.approve(
+    [central.address, amount],
+    { account: investor.account }
+  );
+
+  await assert.rejects(
+    central.write.invest(
+      [amount],
+      { account: investor.account }
+    )
+  );
+});
+
+test("Maximum investment: 40,000 USDT accepted", async () => {
+  const {
+    investor,
+    mockUsdt,
+    central,
+  } = await setup();
+
+  const amount = 40_000n * 10n ** 18n;
+
+  await mockUsdt.write.mint([
+    investor.account.address,
+    amount,
+  ]);
+
+  await mockUsdt.write.approve(
+    [central.address, amount],
+    { account: investor.account }
+  );
+
+  await central.write.invest(
+    [amount],
+    { account: investor.account }
+  );
+});
+
+test("Investment above 40,000 USDT is rejected", async () => {
+  const {
+    investor,
+    mockUsdt,
+    central,
+  } = await setup();
+
+  const amount = 40_001n * 10n ** 18n;
+
+  await mockUsdt.write.mint([
+    investor.account.address,
+    amount,
+  ]);
+
+  await mockUsdt.write.approve(
+    [central.address, amount],
+    { account: investor.account }
+  );
+
+  await assert.rejects(
+    central.write.invest(
+      [amount],
+      { account: investor.account }
+    )
+  );
+});
+
+test("Paused contract rejects investments", async () => {
+  const {
+    owner,
+    investor,
+    mockUsdt,
+    central,
+  } = await setup();
+
+  const amount = 1_000n * 10n ** 18n;
+
+  await mockUsdt.write.mint([
+    investor.account.address,
+    amount,
+  ]);
+
+  await mockUsdt.write.approve(
+    [central.address, amount],
+    { account: investor.account }
+  );
+
+  await central.write.pause({
+    account: owner.account,
+  });
+
+  await assert.rejects(
+    central.write.invest(
+      [amount],
+      { account: investor.account }
+    )
+  );
+test("Investment records a 3-year principal lock", async () => {
+  const {
+    investor,
+    mockUsdt,
+    central,
+  } = await setup();
+
+  const amount = 1_000n * 10n ** 18n;
+
+  await mockUsdt.write.mint([
+    investor.account.address,
+    amount,
+  ]);
+
+  await mockUsdt.write.approve(
+    [central.address, amount],
+    { account: investor.account }
+  );
+
+  await central.write.invest(
+    [amount],
+    { account: investor.account }
+  );
+
+  const investments = await central.read.getInvestments([
+    investor.account.address,
+  ]);
+
+  const investment = investments[0];
+
+  const latestBlock = await central.client.getBlock();
+
+  const expectedUnlockTime =
+    latestBlock.timestamp + 1095n * 24n * 60n * 60n;
+
+  assert.equal(investment.amount, amount);
+
+  assert.equal(
+    investment.unlockTime,
+    expectedUnlockTime
+  );
+});
+  const {
+    investor,
+    mockUsdt,
+    central,
+  } = await setup();
+
+  const amount = 1_000n * 10n ** 18n;
+
+  await mockUsdt.write.mint([
+    investor.account.address,
+    amount,
+  ]);
+
+  await mockUsdt.write.approve(
+    [central.address, amount],
+    { account: investor.account }
+  );
+
+  const before = BigInt(Math.floor(Date.now() / 1000));
+
+  await central.write.invest(
+    [amount],
+    { account: investor.account }
+  );
+
+  const investments = await central.read.getInvestments([
+    investor.account.address,
+  ]);
+
+  const investment = investments[0];
+
+  const after = BigInt(Math.floor(Date.now() / 1000));
+
+  const expectedMinimum = before + 1095n * 24n * 60n * 60n;
+  const expectedMaximum = after + 1095n * 24n * 60n * 60n;
+
+  assert.equal(investment.amount, amount);
+
+  assert.ok(
+    investment.unlockTime >= expectedMinimum
+  );
+
+  assert.ok(
+    investment.unlockTime <= expectedMaximum
+  );
+});

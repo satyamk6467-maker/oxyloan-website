@@ -1,0 +1,183 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.28;
+
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "@openzeppelin/contracts/access/Ownable2Step.sol";
+import "@openzeppelin/contracts/utils/Pausable.sol";
+
+contract OxyLoanCentral is Ownable2Step, Pausable {
+
+    // =============================================================
+    // USDT CONFIGURATION
+    // =============================================================
+
+    IERC20 public immutable usdt;
+
+    uint256 public constant BPS = 10_000;
+
+    // 50% of recorded investment
+    uint256 public constant TREASURY_BPS = 5_000;
+
+    // 50% of recorded investment
+    uint256 public constant LIQUIDITY_BPS = 5_000;
+
+    // Principal lock period: 3 years
+    // Using days because Solidity 0.8.28 deprecates "years".
+    uint256 public constant PRINCIPAL_LOCK = 1095 days;
+
+
+    // =============================================================
+    // INVESTMENT ACCOUNTING
+    // =============================================================
+
+    struct Investment {
+        uint256 amount;
+        uint256 timestamp;
+        uint256 unlockTime;
+        uint256 treasuryAllocation;
+        uint256 liquidityAllocation;
+    }
+
+    mapping(address => Investment[]) private investments;
+
+
+    // =============================================================
+    // SYSTEM ADDRESSES
+    // =============================================================
+
+    address public rewardTreasury;
+    address public liquidityManager;
+
+
+    // =============================================================
+    // EVENTS
+    // =============================================================
+
+    event RewardTreasuryUpdated(
+        address indexed previousTreasury,
+        address indexed newTreasury
+    );
+
+    event LiquidityManagerUpdated(
+        address indexed previousManager,
+        address indexed newManager
+    );
+
+    event InvestmentRecorded(
+        address indexed investor,
+        uint256 amount,
+        uint256 treasuryAllocation,
+        uint256 liquidityAllocation,
+        uint256 unlockTime
+    );
+
+
+    // =============================================================
+    // CONSTRUCTOR
+    // =============================================================
+
+    constructor(
+        address initialOwner,
+        address usdtToken,
+        address initialRewardTreasury,
+        address initialLiquidityManager
+    )
+        Ownable(initialOwner)
+    {
+        require(
+            initialOwner != address(0),
+            "Invalid owner"
+        );
+
+        require(
+            usdtToken != address(0),
+            "Invalid USDT"
+        );
+
+        require(
+            initialRewardTreasury != address(0),
+            "Invalid treasury"
+        );
+
+        require(
+            initialLiquidityManager != address(0),
+            "Invalid liquidity manager"
+        );
+
+        usdt = IERC20(usdtToken);
+
+        rewardTreasury = initialRewardTreasury;
+        liquidityManager = initialLiquidityManager;
+    }
+
+
+    // =============================================================
+    // TREASURY CONTROL
+    // =============================================================
+
+    function setRewardTreasury(
+        address newTreasury
+    )
+        external
+        onlyOwner
+    {
+        require(
+            newTreasury != address(0),
+            "Invalid treasury"
+        );
+
+        address previousTreasury = rewardTreasury;
+
+        rewardTreasury = newTreasury;
+
+        emit RewardTreasuryUpdated(
+            previousTreasury,
+            newTreasury
+        );
+    }
+
+
+    // =============================================================
+    // LIQUIDITY CONTROL
+    // =============================================================
+
+    function setLiquidityManager(
+        address newManager
+    )
+        external
+        onlyOwner
+    {
+        require(
+            newManager != address(0),
+            "Invalid manager"
+        );
+
+        address previousManager = liquidityManager;
+
+        liquidityManager = newManager;
+
+        emit LiquidityManagerUpdated(
+            previousManager,
+            newManager
+        );
+    }
+
+
+    // =============================================================
+    // EMERGENCY PAUSE
+    // =============================================================
+
+    function pause()
+        external
+        onlyOwner
+    {
+        _pause();
+    }
+
+    function unpause()
+        external
+        onlyOwner
+    {
+        _unpause();
+    }
+}
