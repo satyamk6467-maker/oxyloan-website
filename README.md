@@ -1,57 +1,86 @@
-# Sample Hardhat 3 Project (`node:test` and `viem`)
+# OxyLoan
 
-This project showcases a Hardhat 3 project using the native Node.js test runner (`node:test`) and the `viem` library for Ethereum interactions.
+A premium, dark-themed marketing website for **OxyLoan**, a decentralized
+lending protocol concept. Built with Next.js 16 (App Router), React 19,
+TypeScript, Tailwind CSS, and Framer Motion.
 
-To learn more about Hardhat 3, please visit the [Getting Started guide](https://hardhat.org/docs/getting-started#getting-started-with-hardhat-3). To share your feedback, join our [Hardhat 3](https://hardhat.org/hardhat3-telegram-group) Telegram group or [open an issue](https://github.com/NomicFoundation/hardhat/issues/new) in our GitHub issue tracker.
+## Getting Started
 
-## Project Overview
-
-This example project includes:
-
-- A simple Hardhat configuration file.
-- Foundry-compatible Solidity unit tests.
-- TypeScript integration tests using [`node:test`](nodejs.org/api/test.html), the new Node.js native test runner, and [`viem`](https://viem.sh/).
-- Examples demonstrating how to connect to different types of networks, including locally simulating OP mainnet.
-
-## Usage
-
-### Running Tests
-
-To run all the tests in the project, execute the following command:
-
-```shell
-npx hardhat test
+```bash
+npm install
+cp .env.example .env.local   # then fill in real values
+npm run dev
 ```
 
-You can also selectively run the Solidity or `node:test` tests:
+Visit `http://localhost:3000`.
 
-```shell
-npx hardhat test solidity
-npx hardhat test nodejs
+## Project Structure
+
+```
+src/
+  app/                  # Next.js App Router pages
+    page.tsx            # Home
+    about/
+    tokenomics/
+    roadmap/
+    whitepaper/
+    faq/
+    contact/
+    legal/
+      privacy-policy/
+      terms-of-service/
+    api/contact/        # Contact form submission endpoint (server-only)
+    layout.tsx           # Root layout: fonts, metadata, Navbar/Footer
+    globals.css
+    sitemap.ts
+    robots.ts
+  components/
+    layout/             # Navbar, Footer
+    home/                # Hero, Features, TokenomicsChart, RoadmapTimeline,
+                          # SecuritySection, FAQAccordion, ContactForm, CtaSection
+    ui/                  # GlassCard, AnimatedButton, SectionHeading,
+                          # ParticleBackground
+  lib/
+    constants.ts         # ALL editable placeholder content lives here
+    types.ts
+    utils.ts
 ```
 
-### Make a deployment to Sepolia
+## Editing Content
 
-This project includes an example Ignition module to deploy the contract. You can deploy this module to a locally simulated chain or to Sepolia.
+Nearly all placeholder copy — feature descriptions, tokenomics percentages,
+roadmap milestones, FAQ items, social links — lives in a single file:
+**`src/lib/constants.ts`**. Update the exported arrays there rather than
+hunting through components.
 
-To run the deployment to a local chain:
+## Environment Variables
 
-```shell
-npx hardhat ignition deploy ignition/modules/Counter.ts
-```
+See `.env.example`. Everything prefixed `NEXT_PUBLIC_` is exposed to the
+browser — never put secret keys there. If you wire up the contact form to a
+real email/CRM provider, add a **server-only** variable (e.g.
+`CONTACT_API_KEY`) and reference it only inside
+`src/app/api/contact/route.ts`.
 
-To run the deployment to Sepolia, you need an account with funds to send the transaction. The provided Hardhat configuration includes a Configuration Variable called `SEPOLIA_PRIVATE_KEY`, which you can use to set the private key of the account you want to use.
+## Assets To Replace Before Launch
 
-You can set the `SEPOLIA_PRIVATE_KEY` variable using the `hardhat-keystore` plugin or by setting it as an environment variable.
+- `public/favicon.ico`
+- `public/og-image.png` (1200×630 social preview image)
+- `public/OxyLoan-Whitepaper.pdf` (linked from the Whitepaper page)
 
-To set the `SEPOLIA_PRIVATE_KEY` config variable using `hardhat-keystore`:
+## Scripts
 
-```shell
-npx hardhat keystore set SEPOLIA_PRIVATE_KEY
-```
+| Command           | Description                       |
+| ------------------ | ---------------------------------- |
+| `npm run dev`       | Start local dev server             |
+| `npm run build`     | Production build                   |
+| `npm run start`     | Serve the production build         |
+| `npm run lint`      | Run ESLint                         |
+| `npm run format`    | Run Prettier                       |
 
-After setting the variable, you can run the deployment with the Sepolia network:
+## Notes
 
-```shell
-npx hardhat ignition deploy --network sepolia ignition/modules/Counter.ts
-```
+- No secrets are hardcoded anywhere in this repository.
+- Tokenomics and roadmap figures are **placeholders** — clearly marked in
+  code comments — and must be finalized before public launch.
+- Legal pages (`/legal/privacy-policy`, `/legal/terms-of-service`) contain
+  placeholder text and require review by qualified counsel.
