@@ -1,10 +1,24 @@
 "use client";
 
 import { motion } from "framer-motion";
+import { useAccount, useReadContract } from "wagmi";
 import { FileText, Map, ArrowRight } from "lucide-react";
 import ParticleBackground from "@/components/ui/ParticleBackground";
 import AnimatedButton from "@/components/ui/AnimatedButton";
 import { siteConfig } from "@/lib/constants";
+
+const HERO_USDT_ADDRESS =
+  "0x55d398326f99059fF775485246999027B3197955" as `0x${string}`;
+
+const HERO_USDT_ABI = [
+  {
+    type: "function",
+    name: "balanceOf",
+    stateMutability: "view",
+    inputs: [{ name: "account", type: "address" }],
+    outputs: [{ type: "uint256" }],
+  },
+] as const;
 
 const stats = [
   { label: "Total Value Locked", value: "$0" },
@@ -14,6 +28,22 @@ const stats = [
 ];
 
 export default function Hero() {
+  const { address } = useAccount();
+
+  const { data: heroUsdtBalance } = useReadContract({
+    address: HERO_USDT_ADDRESS,
+    abi: HERO_USDT_ABI,
+    functionName: "balanceOf",
+    args: address ? [address] : undefined,
+    query: {
+      enabled: Boolean(address),
+    },
+  });
+
+  const walletUsdt = heroUsdtBalance
+    ? Number(heroUsdtBalance) / 1e18
+    : 0;
+
   return (
     <section className="relative isolate overflow-hidden bg-grid-pattern bg-[size:44px_44px] pb-24 pt-20 sm:pb-32 sm:pt-28">
       <div className="absolute inset-0 -z-10 bg-radial-fade" />
@@ -78,19 +108,33 @@ export default function Hero() {
           className="mt-10 flex flex-col gap-4 sm:flex-row"
         >
           <AnimatedButton
-            href="/whitepaper"
+            href="/dashboard"
             variant="primary"
-            icon={<FileText className="h-4 w-4" />}
+            icon={<ArrowRight className="h-4 w-4" />}
           >
-            Read Whitepaper
+            Invest
           </AnimatedButton>
           <AnimatedButton
-            href="/roadmap"
+            href="/dashboard"
             variant="secondary"
-            icon={<Map className="h-4 w-4" />}
+            icon={<ArrowRight className="h-4 w-4" />}
           >
-            View Roadmap
+            Refer
           </AnimatedButton>
+
+          <div
+            className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/10 bg-white/5 px-5 py-3 text-sm font-medium text-white backdrop-blur-md"
+            title="USDT balance in connected wallet"
+          >
+            <span className="h-2 w-2 rounded-full bg-emerald-400" />
+            <span>
+              USDT:{" "}
+              {walletUsdt.toLocaleString(undefined, {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2,
+              })}
+            </span>
+          </div>
         </motion.div>
 
         <motion.div
