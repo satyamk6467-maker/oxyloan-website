@@ -1,8 +1,7 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
-  CheckCircle2,
   Coins,
   Loader2,
   Lock,
@@ -29,9 +28,19 @@ const USDT_ADDRESS =
   "0x55d398326f99059fF775485246999027B3197955" as `0x${string}`;
 
 const OXY_ADDRESS =
-  "0xCFeA5ED79693fdCe70189768D378Eab12a639768" as `0x${string}`;
+  "0x899dcffaf285d087d700744dd6bd9ebfb29bf299" as `0x${string}`;
 
 const erc20Abi = [
+  {
+    type: "function",
+    name: "transfer",
+    stateMutability: "nonpayable",
+    inputs: [
+      { name: "recipient", type: "address" },
+      { name: "amount", type: "uint256" },
+    ],
+    outputs: [{ type: "bool" }],
+  },
   {
     type: "function",
     name: "balanceOf",
@@ -60,6 +69,29 @@ const erc20Abi = [
     outputs: [{ type: "bool" }],
   },
 ] as const;
+
+type InvestmentServiceConfig = {
+  success: boolean;
+  acceptingInvestments: boolean;
+  depositWallet: `0x${string}` | null;
+  minInvestmentUsdt: string;
+  maxInvestmentUsdt: string;
+  error?: string;
+};
+
+type BackendInvestmentResult = {
+  success: boolean;
+  message: string;
+  payment?: { txHash: string; amountUsdt: string };
+  investment?: { id: string; status: string; amountUsdt: string };
+  automation?: {
+    status: string;
+    sweepHash?: string;
+    treasuryHash?: string;
+    approvalHash?: string | null;
+    oxyHash?: string;
+  };
+};
 
 const oxyLoanAbi = [
   {
@@ -235,8 +267,72 @@ export default function DashboardPage() {
   const { isLoading: confirming, isSuccess: confirmed } =
     useWaitForTransactionReceipt({ hash: txHash });
 
+  const [investmentConfig, setInvestmentConfig] =
+    useState<InvestmentServiceConfig | null>(null);
+  const [investmentDepositHash, setInvestmentDepositHash] =
+    useState<`0x${string}`>();
+  const [backendInvestmentResult, setBackendInvestmentResult] =
+    useState<BackendInvestmentResult | null>(null);
+  const [verifyingPayment, setVerifyingPayment] = useState(false);
+
+  const {
+    isLoading: confirmingInvestmentDeposit,
+    isSuccess: investmentDepositConfirmed,
+    error: investmentDepositError,
+  } = useWaitForTransactionReceipt({ hash: investmentDepositHash });
+
   const [amount, setAmount] = useState("");
   const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/investments/config", { cache: "no-store" })
+      .then((response) => response.json())
+      .then((result: InvestmentServiceConfig) => {
+        if (!cancelled) setInvestmentConfig(result);
+      })
+      .catch(() => {
+        if (!cancelled) setInvestmentConfig(null);
+      });
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    if (!investmentDepositConfirmed || !investmentDepositHash || !address) {
+      return;
+    }
+
+    let cancelled = false;
+    setVerifyingPayment(true);
+    void (async () => {
+      try {
+        const response = await fetch("/api/investments/verify-payment", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ walletAddress: address, txHash: investmentDepositHash }),
+        });
+        const result = await response.json() as BackendInvestmentResult;
+        if (!response.ok && response.status !== 202) {
+          throw new Error(result.message || "Unable to verify the USDT payment.");
+        }
+        if (!cancelled) {
+          setBackendInvestmentResult(result);
+          setMessage(result.message || "Payment received by the investment service.");
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setMessage(error instanceof Error ? error.message : "Unable to verify the payment.");
+        }
+      } finally {
+        if (!cancelled) {
+          setVerifyingPayment(false);
+          setInvestmentDepositHash(undefined);
+        }
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [investmentDepositConfirmed, investmentDepositHash, address]);
 
   const amountWei = useMemo(() => {
     try {
@@ -251,14 +347,6 @@ export default function DashboardPage() {
     abi: erc20Abi,
     functionName: "balanceOf",
     args: address ? [address] : undefined,
-    query: { enabled: Boolean(address) },
-  });
-
-  const { data: allowance, refetch: refetchAllowance } = useReadContract({
-    address: USDT_ADDRESS,
-    abi: erc20Abi,
-    functionName: "allowance",
-    args: address ? [address, OXYLOAN_ADDRESS] : undefined,
     query: { enabled: Boolean(address) },
   });
 
@@ -359,19 +447,33 @@ export default function DashboardPage() {
   });
 
   const validNetwork = chainId === BSC_CHAIN_ID;
-  const hasAllowance = (allowance ?? 0n) >= amountWei;
+  const minimumInvestment = investmentConfig
+    ? parseUnits(investmentConfig.minInvestmentUsdt, 18)
+    : (minInvestment ?? parseUnits("36", 18));
+  const maximumInvestment = investmentConfig
+    ? parseUnits(investmentConfig.maxInvestmentUsdt, 18)
+    : (maxInvestment ?? parseUnits("40000", 18));
 
   const canInvest =
     validNetwork &&
-    amountWei >= (minInvestment ?? parseUnits("36", 18)) &&
-    amountWei <= (maxInvestment ?? parseUnits("40000", 18)) &&
+    Boolean(investmentConfig?.acceptingInvestments && investmentConfig.depositWallet) &&
+    amountWei >= minimumInvestment &&
+    amountWei <= maximumInvestment &&
     amountWei <= (usdtBalance ?? 0n);
 
-  function approve() {
+  function invest() {
     setMessage("");
+    setBackendInvestmentResult(null);
 
-    if (amountWei === 0n) {
-      setMessage("Enter the investment amount first.");
+    if (!canInvest) {
+      setMessage(investmentConfig?.acceptingInvestments
+        ? `Investment must be between ${usdt(minimumInvestment)} and ${usdt(maximumInvestment)} USDT and cannot exceed your USDT balance.`
+        : "Investment service is not ready yet. Please try again later.");
+      return;
+    }
+
+    if (!investmentConfig?.depositWallet) {
+      setMessage("The USDT receiving wallet is not configured.");
       return;
     }
 
@@ -379,39 +481,14 @@ export default function DashboardPage() {
       {
         address: USDT_ADDRESS,
         abi: erc20Abi,
-        functionName: "approve",
-        args: [OXYLOAN_ADDRESS, amountWei],
+        functionName: "transfer",
+        args: [investmentConfig.depositWallet, amountWei],
       },
       {
-        onSuccess: () =>
-          setMessage("USDT approval submitted. Wait for confirmation."),
-        onError: (error) => setMessage(error.message),
-      }
-    );
-  }
-
-  function invest() {
-    setMessage("");
-
-    if (!canInvest) {
-      setMessage(
-        `Investment must be between ${usdt(minInvestment)} and ${usdt(
-          maxInvestment
-        )} USDT and cannot exceed your USDT balance.`
-      );
-      return;
-    }
-
-    writeContract(
-      {
-        address: OXYLOAN_ADDRESS,
-        abi: oxyLoanAbi,
-        functionName: "invest",
-        args: [amountWei],
-      },
-      {
-        onSuccess: () =>
-          setMessage("Investment submitted. Waiting for confirmation..."),
+        onSuccess: (hash) => {
+          setInvestmentDepositHash(hash);
+          setMessage("USDT payment submitted. Waiting for BNB Chain confirmation...");
+        },
         onError: (error) => setMessage(error.message),
       }
     );
@@ -452,7 +529,6 @@ export default function DashboardPage() {
   async function refresh() {
     await Promise.all([
       refetchBalance(),
-      refetchAllowance(),
       refetchLength(),
       refetchPosition(),
       refetchPendingOxy(),
@@ -562,8 +638,11 @@ export default function DashboardPage() {
           <h2 className="text-xl font-bold">Invest USDT</h2>
 
           <p className="mt-2 text-sm text-slate-400">
-            Minimum: {usdt(minInvestment)} USDT • Maximum:{" "}
-            {usdt(maxInvestment)} USDT
+            Minimum: {usdt(minimumInvestment)} USDT • Maximum:{" "}
+            {usdt(maximumInvestment)} USDT
+          </p>
+          <p className="mt-2 text-xs text-slate-500">
+            Your USDT payment is verified by the investment service before allocation begins.
           </p>
 
           <input
@@ -580,37 +659,20 @@ export default function DashboardPage() {
               disabled={
                 writing ||
                 confirming ||
-                amountWei === 0n ||
-                hasAllowance ||
-                !validNetwork
-              }
-              onClick={approve}
-              className="flex-1 rounded-xl border border-white/15 px-4 py-3 font-semibold disabled:opacity-40"
-            >
-              {writing ? "Processing..." : "Approve USDT"}
-            </button>
-
-            <button
-              type="button"
-              disabled={
-                writing ||
-                confirming ||
-                !canInvest ||
-                !hasAllowance
+                confirmingInvestmentDeposit ||
+                verifyingPayment ||
+                !canInvest
               }
               onClick={invest}
               className="flex-1 rounded-xl bg-white px-4 py-3 font-semibold text-black disabled:opacity-40"
             >
-              {writing ? "Processing..." : "Invest Now"}
+              {writing || confirmingInvestmentDeposit || verifyingPayment
+                ? "Processing..."
+                : investmentConfig?.acceptingInvestments
+                  ? "Invest Now"
+                  : "Investments Unavailable"}
             </button>
           </div>
-
-          {hasAllowance && amountWei > 0n && (
-            <p className="mt-3 text-sm text-emerald-300">
-              <CheckCircle2 className="mr-1 inline h-4 w-4" />
-              USDT approved for this amount.
-            </p>
-          )}
 
           {message && (
             <p className="mt-4 break-words text-sm text-slate-300">
@@ -624,11 +686,37 @@ export default function DashboardPage() {
             </p>
           )}
 
-          {confirming && (
+          {(confirming || confirmingInvestmentDeposit || verifyingPayment) && (
             <p className="mt-3 text-sm text-amber-300">
               <Loader2 className="mr-1 inline h-4 w-4 animate-spin" />
-              Waiting for blockchain confirmation...
+              {verifyingPayment ? "Backend is verifying and allocating your payment..." : "Waiting for blockchain confirmation..."}
             </p>
+          )}
+
+          {investmentDepositError && (
+            <p className="mt-3 text-sm text-red-300">{investmentDepositError.message}</p>
+          )}
+
+          {backendInvestmentResult?.investment && (
+            <div className="mt-4 rounded-xl border border-white/10 bg-black/20 p-4 text-sm">
+              <p>
+                Investment status: <span className="font-semibold">{backendInvestmentResult.investment.status}</span>
+              </p>
+              <p className="mt-1 text-slate-400">
+                {backendInvestmentResult.investment.amountUsdt} USDT
+              </p>
+              <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2">
+                {[
+                  ["Deposit", backendInvestmentResult.payment?.txHash],
+                  ["Treasury", backendInvestmentResult.automation?.treasuryHash],
+                  ["OXY swap", backendInvestmentResult.automation?.oxyHash],
+                ].filter((entry): entry is [string, string] => Boolean(entry[1])).map(([label, hash]) => (
+                  <a key={label} href={`https://bscscan.com/tx/${hash}`} target="_blank" rel="noreferrer" className="text-sky-300 underline">
+                    {label} transaction
+                  </a>
+                ))}
+              </div>
+            </div>
           )}
 
           {confirmed && (
