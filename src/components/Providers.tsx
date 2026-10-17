@@ -16,7 +16,7 @@ if (projectId) {
     defaultNetwork: bsc,
     metadata: { name: "OXYLOAN", description: "Invest USDT (BEP-20) and earn with OXYLOAN", url: siteUrl, icons: [`${siteUrl}/logo.png`] },
     featuredWalletIds: FEATURED_WALLETS,
-    allWallets: "SHOW",
+    allWallets: "HIDE", // only the featured wallets: the popup opens instantly instead of loading 600+ wallets
     features: { analytics: false, email: false, socials: false, onramp: false, swaps: false },
     themeMode: "dark",
     themeVariables: { "--w3m-accent": "#f6c453", "--w3m-border-radius-master": "2px" },

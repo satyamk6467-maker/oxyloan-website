@@ -32,6 +32,7 @@ function ConnectButton() {
   const open = useOpen();
   const { address, isConnected } = useAccount();
   const { disconnect } = useDisconnect();
+  if (!hasWallet) return <button className="btn" disabled title="The site owner still has to add the wallet connect ID">Wallet setup pending</button>;
   if (!isConnected) return <button className="btn btn-primary" onClick={() => open()}>Connect Wallet</button>;
   return (
     <div className="walletchip">
@@ -71,7 +72,7 @@ export default function InvestApp() {
   const wrongNet = isConnected && chainId !== BSC;
   const enabled = !!address && IS_LIVE && !wrongNet;
 
-  const bal = useReadContract({ address: USDT, abi: erc20Abi, functionName: "balanceOf", args: [address ?? zeroAddress], chainId: BSC, query: { enabled: !!address, refetchInterval: 20_000 } });
+  const bal = useReadContract({ address: USDT, abi: erc20Abi, functionName: "balanceOf", args: [address ?? zeroAddress], chainId: BSC, query: { enabled: !!address, refetchInterval: 45_000 } });
   const allowance = useReadContract({ address: USDT, abi: erc20Abi, functionName: "allowance", args: [address ?? zeroAddress, (INVEST_CONTRACT || zeroAddress) as Address], chainId: BSC, query: { enabled } });
   const onchainRef = useReadContract({ address: (INVEST_CONTRACT || zeroAddress) as Address, abi: investAbi, functionName: "referrerOf", args: [address ?? zeroAddress], chainId: BSC, query: { enabled } });
   const paused = useReadContract({ address: (INVEST_CONTRACT || zeroAddress) as Address, abi: investAbi, functionName: "paused", chainId: BSC, query: { enabled: IS_LIVE } });
