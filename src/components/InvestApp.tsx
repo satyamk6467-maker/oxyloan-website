@@ -4,7 +4,8 @@ import { useAccount, usePublicClient, useReadContract, useSwitchChain, useWriteC
 import { useOpen } from "@/lib/useOpen";
 import { useQuery } from "@tanstack/react-query";
 import { formatUnits, isAddress, parseUnits, zeroAddress, type Address } from "viem";
-import WorldBackground from "./WorldBackground";
+import dynamic from "next/dynamic";
+const WorldBackground = dynamic(() => import("./WorldBackground"), { ssr: false });
 import { claimMessage } from "@/lib/claim";
 import {
   FEE_PCT, INVEST_CONTRACT, IS_LIVE, MIN_INVEST_USDT, OXYLOAN, PANCAKE_ROUTER, REFERRAL_PCT, USDT,

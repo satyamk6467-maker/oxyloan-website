@@ -9,7 +9,7 @@ export const metadata: Metadata = {
   icons: { icon: "/logo.png" },
   openGraph: { title: "OXYLOAN", description: "Invest with USDT on BNB Smart Chain", images: ["/logo.png"] },
 };
-export const viewport: Viewport = { width: "device-width", initialScale: 1, viewportFit: "cover", themeColor: "#03050a" };
+export const viewport: Viewport = { width: "device-width", initialScale: 1, viewportFit: "cover", themeColor: "#060505" };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (

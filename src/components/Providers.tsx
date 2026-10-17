@@ -19,7 +19,7 @@ if (projectId) {
     allWallets: "SHOW",
     features: { analytics: false, email: false, socials: false, onramp: false, swaps: false },
     themeMode: "dark",
-    themeVariables: { "--w3m-accent": "#19e6c1", "--w3m-border-radius-master": "2px" },
+    themeVariables: { "--w3m-accent": "#f6c453", "--w3m-border-radius-master": "2px" },
   });
 }
 
