@@ -6,7 +6,9 @@ export const PANCAKE_ROUTER: Address = "0x10ED43C718714eb63d5aA57B78B54704E25602
 export const MANAGEMENT_WALLET: Address = "0xCBbAcCbFaf4b1B8a968Bb205AC59C5175189874d";
 export const SWAP_WALLET: Address = "0xE23C4c49DD09861E86a640293a674D43204987a7";
 
-export const INVEST_CONTRACT = (process.env.NEXT_PUBLIC_INVEST_CONTRACT ?? "") as Address | "";
+// The deployed, BscScan-verified investment contract (public address). The env var can override it, e.g. for a new deployment.
+export const DEPLOYED_INVEST_CONTRACT = "0x14b26B9576808C3C16A5F52038dda38aEc96d3E1";
+export const INVEST_CONTRACT = (process.env.NEXT_PUBLIC_INVEST_CONTRACT || DEPLOYED_INVEST_CONTRACT) as Address | "";
 export const IS_LIVE = /^0x[a-fA-F0-9]{40}$/.test(INVEST_CONTRACT);
 
 export const MIN_INVEST_USDT = 10;
