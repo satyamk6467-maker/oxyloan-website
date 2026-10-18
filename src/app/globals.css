@@ -1,11 +1,11 @@
-:root{--bg:#060505;--panel:rgba(20,15,8,.66);--line:rgba(246,196,83,.17);--tx:#f6f0e2;--mut:#aa9e86;--a:#f6c453;--b:#c98a1b;--bad:#ff6b7a;--ok:#35e08f}
+:root{--bg:#060505;--panel:rgba(18,14,7,.86);--line:rgba(246,196,83,.17);--tx:#f6f0e2;--mut:#aa9e86;--a:#f6c453;--b:#c98a1b;--bad:#ff6b7a;--ok:#35e08f}
 *{box-sizing:border-box}html,body{margin:0;background:radial-gradient(1100px 650px at 78% 6%,rgba(246,196,83,.10),transparent 62%),radial-gradient(800px 600px at 8% 92%,rgba(201,138,27,.08),transparent 60%),var(--bg);background-attachment:fixed;color:var(--tx);font-family:Inter,system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;-webkit-font-smoothing:antialiased}
 body{min-height:100dvh;overflow-x:hidden}a{color:var(--a);text-decoration:none}a:hover{text-decoration:underline}
 .world{position:fixed;inset:0;z-index:0;pointer-events:none}
 .shell{position:relative;z-index:1;max-width:1120px;margin:0 auto;padding:max(14px,env(safe-area-inset-top)) 16px max(24px,env(safe-area-inset-bottom))}
 .top{display:flex;align-items:center;justify-content:space-between;padding:10px 0}
 .brand{display:flex;align-items:center;gap:10px;font-weight:800;letter-spacing:.06em;color:var(--tx)}.brand img{border-radius:9px}.brand:hover{text-decoration:none}
-.glass{background:var(--panel);border:1px solid var(--line);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);box-shadow:0 10px 40px rgba(0,0,0,.35),inset 0 1px 0 rgba(255,255,255,.05)}
+.glass{background:var(--panel);border:1px solid var(--line);;box-shadow:0 10px 40px rgba(0,0,0,.35),inset 0 1px 0 rgba(255,255,255,.05)}
 .hero{padding:34px 0 22px;max-width:620px}
 .pill{display:inline-flex;align-items:center;gap:8px;padding:6px 12px;border-radius:99px;border:1px solid var(--line);background:rgba(246,196,83,.07);font-size:12.5px;color:#f3dca0}
 .dot{width:8px;height:8px;border-radius:50%;background:var(--ok);box-shadow:0 0 10px var(--ok);display:inline-block;margin-right:6px}.pill .dot{margin:0}
@@ -67,7 +67,6 @@ button,a,.chip,.btn{touch-action:manipulation;-webkit-tap-highlight-color:transp
 .hint{margin-top:10px}
 .scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
 @media(max-width:600px){
-  .glass{backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
   .shell{padding-left:14px;padding-right:14px}
   .inputrow input{font-size:24px}
   .steps{grid-template-columns:1fr}

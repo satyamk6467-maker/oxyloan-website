@@ -129,7 +129,7 @@ export default function InvestApp() {
       for (let i = 0; i < 4 && !saved; i++) {
         try {
           const r = await fetch("/api/invest/confirm", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ txHash: hash }) });
-          saved = r.ok;
+          saved = r.status === 200;
         } catch { /* try again */ }
         if (!saved) await new Promise((res) => setTimeout(res, 1500));
       }

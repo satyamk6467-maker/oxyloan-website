@@ -31,7 +31,7 @@ export default function WorldBackground() {
     const c = ref.current!;
     const ctx = c.getContext("2d", { alpha: true })!;
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    let w = 0, h = 0, raf = 0, running = true;
+    let w = 0, h = 0, raf = 0, running = true, low = false, lastNow = 0, slow = 0, dprCap = 1.6;
     const mobile = () => window.innerWidth < 700;
     let mx = 0, my = 0, tmx = 0, tmy = 0;
     const t0 = performance.now();
@@ -60,7 +60,7 @@ export default function WorldBackground() {
     const pulses = Array.from({ length: mobile() ? 8 : 18 }, (_, i) => ({ i, t: Math.random(), sp: 0.1 + Math.random() * 0.18 }));
 
     const resize = () => {
-      const dpr = Math.min(window.devicePixelRatio || 1, mobile() ? 1.25 : 1.6);
+      const dpr = Math.min(window.devicePixelRatio || 1, mobile() ? 1.25 : dprCap);
       w = window.innerWidth; h = window.innerHeight;
       c.width = Math.round(w * dpr); c.height = Math.round(h * dpr);
       c.style.width = w + "px"; c.style.height = h + "px";
@@ -142,6 +142,13 @@ export default function WorldBackground() {
     }
 
     function frame(now: number) {
+      // adaptive quality: if frames are slow for ~2 seconds, drop to a lighter scene and a smaller canvas
+      if (lastNow && !low) {
+        const dt = now - lastNow;
+        slow = dt > 30 ? slow + 1 : Math.max(0, slow - 2);
+        if (slow > 45) { low = true; dprCap = 1; resize(); }
+      }
+      lastNow = now;
       const t = (now - t0) / 1000;
       mx += (tmx - mx) * 0.05; my += (tmy - my) * 0.05;
       const intro = ease(t / 1.6);
@@ -164,7 +171,8 @@ export default function WorldBackground() {
       ctx.beginPath(); ctx.arc(gx, gy, G, 0, TAU); ctx.stroke();
       glowAt(gx, gy, G * 1.25, 0.14 * fade);
       const rot = t * 0.14;
-      for (const d of globe) {
+      for (let gi = 0; gi < globe.length; gi += low ? 2 : 1) {
+        const d = globe[gi];
         const lon = d.lon + rot, x = Math.cos(d.lat) * Math.sin(lon), z = Math.cos(d.lat) * Math.cos(lon), y = Math.sin(d.lat);
         if (z < -0.05) continue;
         ctx.globalAlpha = (0.5 + z * 0.5) * fade;
@@ -246,7 +254,8 @@ export default function WorldBackground() {
 
       // sparkles
       ctx.globalCompositeOperation = "lighter";
-      for (const s of sparks) {
+      for (let si = 0; si < sparks.length; si += low ? 3 : 1) {
+        const s = sparks[si];
         s.y -= s.v * 0.016; if (s.y < -0.02) { s.y = 1.02; s.x = Math.random(); }
         const tw = 0.4 + 0.6 * Math.sin(t * 1.6 + s.ph);
         ctx.globalAlpha = 0.5 * tw * (mob ? 0.6 : 1);
