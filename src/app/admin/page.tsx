@@ -41,7 +41,7 @@ export default function Admin() {
         <div className="card glass" style={{ maxWidth: 460 }}>
           <h2>Owner sign-in</h2>
           <p className="muted">Sign a free message with the admin wallet. No other wallet can open this page.</p>
-          {!isConnected ? <button className="btn btn-primary wide" onClick={() => open()}>Connect admin wallet</button>
+          {!isConnected ? <button className="btn btn-primary btn-green wide" onClick={() => open()}>Connect admin wallet</button>
             : <button className="btn btn-primary wide" onClick={login}>Sign in as {short(address)}</button>}
           {err && <div className="msg err">{err}</div>}
         </div>

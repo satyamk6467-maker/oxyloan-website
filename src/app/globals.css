@@ -103,3 +103,7 @@ button,a,.chip,.btn{touch-action:manipulation;-webkit-tap-highlight-color:transp
 .field:focus-within{border-color:rgba(246,196,83,.55);box-shadow:0 0 0 3px rgba(246,196,83,.12)}
 .world{will-change:transform}
 @media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
+
+/* green connect-wallet button */
+.btn-green,.btn-primary.btn-green{background:linear-gradient(100deg,#0c8f5f,#1fce7a 50%,#62eaa8);color:#04170d;box-shadow:0 6px 24px rgba(31,206,122,.3)}
+.btn-primary.btn-green:hover{box-shadow:0 8px 34px rgba(31,206,122,.5)}

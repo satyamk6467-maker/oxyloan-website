@@ -7,7 +7,7 @@
 // Schedule it with cron / systemd timer, e.g. every 15 minutes.
 //
 // Required env: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, SWAP_WALLET_PRIVATE_KEY, (optional) BSC_RPC_URL
-// Optional env: MIN_BATCH_USDT (default 50), MAX_SLIPPAGE_BPS (default 300 = 3%), DRY_RUN (default 1)
+// Optional env: MIN_BATCH_USDT (default 10), MAX_SLIPPAGE_BPS (default 300 = 3%), DRY_RUN (default 1)
 import { createClient } from "@supabase/supabase-js";
 import { createPublicClient, createWalletClient, http, parseAbi, formatUnits, parseUnits } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
@@ -20,7 +20,7 @@ const SWAP_WALLET = "0xE23C4c49DD09861E86a640293a674D43204987a7";
 
 const need = (k) => { const v = process.env[k]; if (!v) { console.error(`Missing ${k}`); process.exit(1); } return v; };
 const dry = process.env.DRY_RUN !== "0";
-const minBatch = parseUnits(process.env.MIN_BATCH_USDT ?? "50", 18);
+const minBatch = parseUnits(process.env.MIN_BATCH_USDT ?? "10", 18);
 const slipBps = BigInt(process.env.MAX_SLIPPAGE_BPS ?? "300");
 
 const erc20 = parseAbi(["function balanceOf(address) view returns (uint256)", "function allowance(address,address) view returns (uint256)", "function approve(address,uint256) returns (bool)"]);
