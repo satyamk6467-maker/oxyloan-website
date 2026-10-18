@@ -1,5 +1,8 @@
 import { WagmiAdapter } from "@reown/appkit-adapter-wagmi";
 import { bsc } from "@reown/appkit/networks";
+import { createConfig, http } from "wagmi";
+import { injected } from "wagmi/connectors";
+import { bsc as wagmiBsc } from "wagmi/chains";
 
 export const projectId = process.env.NEXT_PUBLIC_REOWN_PROJECT_ID ?? "";
 export const networks = [bsc] as [typeof bsc];
@@ -13,7 +16,11 @@ export const wagmiAdapter = new WagmiAdapter({
   ...(rpc ? { customRpcUrls: { "eip155:56": [{ url: rpc }] } } : {}),
 });
 
-export const wagmiConfig = wagmiAdapter.wagmiConfig;
+// With a Reown Project ID the AppKit adapter config is used (adds WalletConnect). Without one, a plain config
+// still discovers every installed wallet (EIP-6963) and works inside wallet browsers, so Connect Wallet always works.
+export const wagmiConfig = projectId
+  ? wagmiAdapter.wagmiConfig
+  : createConfig({ chains: [wagmiBsc], connectors: [injected()], multiInjectedProviderDiscovery: true, ssr: true, transports: { [wagmiBsc.id]: http(rpc || "https://bsc-dataseed.bnbchain.org") } });
 
 // Wallet IDs from the WalletConnect explorer; these appear first in the connect pop-up
 export const FEATURED_WALLETS = [

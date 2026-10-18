@@ -5,6 +5,7 @@ import { WagmiProvider, type Config } from "wagmi";
 import { createAppKit } from "@reown/appkit/react";
 import { bsc } from "@reown/appkit/networks";
 import { wagmiAdapter, wagmiConfig, projectId, FEATURED_WALLETS } from "@/lib/wagmi";
+import WalletModal from "./WalletModal";
 
 const siteUrl = process.env.NEXT_PUBLIC_SITE_URL ?? "https://oxylon.vercel.app";
 
@@ -27,7 +28,7 @@ export default function Providers({ children }: { children: ReactNode }) {
   const [qc] = useState(() => new QueryClient({ defaultOptions: { queries: { staleTime: 10_000, refetchOnWindowFocus: false } } }));
   return (
     <WagmiProvider config={wagmiConfig as Config}>
-      <QueryClientProvider client={qc}>{children}</QueryClientProvider>
+      <QueryClientProvider client={qc}>{children}<WalletModal /></QueryClientProvider>
     </WagmiProvider>
   );
 }

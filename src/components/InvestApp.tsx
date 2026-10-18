@@ -14,7 +14,7 @@ import {
 
 const BSC = 56;
 const REF_KEY = "oxy_ref";
-const hasWallet = !!process.env.NEXT_PUBLIC_REOWN_PROJECT_ID;
+const hasWallet = true; // our own wallet picker always works; a Reown ID only adds WalletConnect QR
 
 const fmt = (v: bigint | undefined, dp = 2) => {
   if (v === undefined) return "–";
@@ -32,7 +32,6 @@ function ConnectButton() {
   const open = useOpen();
   const { address, isConnected } = useAccount();
   const { disconnect } = useDisconnect();
-  if (!hasWallet) return <button className="btn" disabled title="The site owner still has to add the wallet connect ID">Wallet setup pending</button>;
   if (!isConnected) return <button className="btn btn-primary btn-green" onClick={() => open()}>Connect Wallet</button>;
   return (
     <div className="walletchip">

@@ -107,3 +107,19 @@ button,a,.chip,.btn{touch-action:manipulation;-webkit-tap-highlight-color:transp
 /* green connect-wallet button */
 .btn-green,.btn-primary.btn-green{background:linear-gradient(100deg,#0c8f5f,#1fce7a 50%,#62eaa8);color:#04170d;box-shadow:0 6px 24px rgba(31,206,122,.3)}
 .btn-primary.btn-green:hover{box-shadow:0 8px 34px rgba(31,206,122,.5)}
+
+/* wallet picker */
+.wm-back{position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.66);display:grid;place-items:center;padding:16px;animation:fadein .2s both}
+@keyframes fadein{from{opacity:0}to{opacity:1}}
+.wm{width:min(440px,100%);max-height:min(90dvh,720px);overflow:auto;border-radius:22px;padding:20px;animation:rise .35s cubic-bezier(.2,.7,.2,1) both;background:rgba(18,14,8,.94)}
+.wm-head{display:flex;justify-content:space-between;align-items:center}.wm-head h2{margin:0;font-size:20px}
+.wm-sub{margin:6px 0 14px}
+.wm-list{display:grid;gap:8px}
+.wm-row{display:flex;align-items:center;gap:12px;width:100%;min-height:56px;padding:10px 14px;border-radius:14px;border:1px solid var(--line);background:rgba(255,255,255,.05);color:var(--tx);font:inherit;cursor:pointer;text-align:left;transition:border-color .2s,transform .15s,background .2s}
+.wm-row:hover:not([disabled]){border-color:rgba(246,196,83,.55);background:rgba(246,196,83,.07);transform:translateY(-1px)}
+.wm-row[disabled]{opacity:.6;cursor:wait}
+.wm-ic{width:36px;height:36px;border-radius:10px;display:grid;place-items:center;font-weight:800;color:#111;flex:none}
+.wm-name{flex:1;font-weight:700}
+.wm-tag{font-size:12px;color:var(--mut);border:1px solid var(--line);border-radius:99px;padding:3px 10px}.wm-tag.ok{color:#62eaa8;border-color:rgba(98,234,168,.45)}
+.wm-note{margin:4px 4px 8px}
+@media(max-width:600px){.wm-back{place-items:end center;padding:0}.wm{border-bottom-left-radius:0;border-bottom-right-radius:0;max-height:88dvh;padding-bottom:max(20px,env(safe-area-inset-bottom))}}
