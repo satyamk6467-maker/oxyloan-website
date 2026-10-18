@@ -1,6 +1,6 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
-import { useAccount, usePublicClient, useReadContract, useSwitchChain, useWriteContract, useDisconnect, useSignMessage, useWatchAsset } from "wagmi";
+import { useAccount, usePublicClient, useReadContract, useSwitchChain, useWriteContract, useDisconnect, useSignMessage, useWatchAsset, useBalance } from "wagmi";
 import { useOpen } from "@/lib/useOpen";
 import { useQuery } from "@tanstack/react-query";
 import { formatUnits, isAddress, parseUnits, zeroAddress, type Address } from "viem";
@@ -75,6 +75,9 @@ export default function InvestApp() {
   const allowance = useReadContract({ address: USDT, abi: erc20Abi, functionName: "allowance", args: [address ?? zeroAddress, (INVEST_CONTRACT || zeroAddress) as Address], chainId: BSC, query: { enabled } });
   const onchainRef = useReadContract({ address: (INVEST_CONTRACT || zeroAddress) as Address, abi: investAbi, functionName: "referrerOf", args: [address ?? zeroAddress], chainId: BSC, query: { enabled } });
   const paused = useReadContract({ address: (INVEST_CONTRACT || zeroAddress) as Address, abi: investAbi, functionName: "paused", chainId: BSC, query: { enabled: IS_LIVE } });
+
+  const bnb = useBalance({ address, chainId: BSC, query: { enabled: !!address, refetchInterval: 45_000 } });
+  const lowGas = !!address && bnb.data !== undefined && bnb.data.value < 300000000000000n; // under 0.0003 BNB
 
   const referrer: Address | "" = useMemo(() => {
     const oc = onchainRef.data as string | undefined;
@@ -222,6 +225,7 @@ export default function InvestApp() {
             <p className="fine">The platform fee covers operations, technical support, compliance and green initiatives. It is sent straight to the management wallet by the smart contract. OXYLOAN is credited to your account after the swap completes, then you withdraw it to your wallet.</p>
 
             {cta}
+            {isConnected && !wrongNet && lowGas && <div className="msg err" role="alert">This wallet has almost no BNB. Network fees on BNB Smart Chain are paid in BNB, not USDT. Add about 0.002 BNB, then try again.</div>}
             {!isConnected && hasWallet && <p className="fine hint">On a phone? Tap Connect Wallet and pick your wallet app (Trust Wallet, MetaMask, SafePal, TokenPocket, Binance, OKX, Bitget, Coinbase). You can also open this page inside your wallet app&apos;s browser.</p>}
             {msg && (
               <div className={`msg ${msg.type}`} role="status">

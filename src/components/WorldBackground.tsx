@@ -240,7 +240,8 @@ export default function WorldBackground() {
         if (it.kind === "coin") coin(it.x, it.y, it.r, it.a, it.r * 0.16, 0, al);
         else glass(it.x, it.y, it.r, it.a, it.a * 0.7, al);
       };
-      for (const it of items) if (it.z < 0) drawItem(it);
+      const nearMain = (it: Item) => Math.hypot(it.x - cx, it.y - cy) < R * 1.45;
+      for (const it of items) if (it.z < 0 || nearMain(it)) drawItem(it);
 
       // the main coin: a full turn every ~11 seconds, a gentle swing in between
       const cycle = 11, u = (t % cycle) - (cycle - 2.6);
@@ -250,7 +251,7 @@ export default function WorldBackground() {
       glowAt(cx, cy, R * 2.3, 0.4 * fade);
       coin(cx, cy, R, theta, R * 0.13, shine, fade);
 
-      for (const it of items) if (it.z >= 0) drawItem(it);
+      for (const it of items) if (it.z >= 0 && !nearMain(it)) drawItem(it);
 
       // sparkles
       ctx.globalCompositeOperation = "lighter";
