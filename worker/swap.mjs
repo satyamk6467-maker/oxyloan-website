@@ -1,3 +1,4 @@
+// OXYLOAN swap worker (v1 contract ONLY). v2 investments are swapped and locked on-chain, so they are skipped (oxyloan_locked is set).
 // OXYLOAN swap worker. Converts the USDT that the contract sent to the swap wallet into OXYLOAN on PancakeSwap,
 // then credits each investment with its share of the OXYLOAN in the database.
 //
@@ -36,7 +37,7 @@ const transport = http(process.env.BSC_RPC_URL ?? "https://bsc-dataseed.bnbchain
 const pub = createPublicClient({ chain: bsc, transport });
 const wal = createWalletClient({ account, chain: bsc, transport });
 
-const { data: pending, error } = await sb.from("investments").select("id,swap_amount").is("swap_batch_id", null).order("id").limit(500);
+const { data: pending, error } = await sb.from("investments").select("id,swap_amount").is("swap_batch_id", null).is("oxyloan_locked", null).order("id").limit(500);
 if (error) throw error;
 const owed = pending.reduce((s, r) => s + BigInt(r.swap_amount.toString().split(".")[0]), 0n);
 console.log(`Pending: ${pending.length} investments, ${formatUnits(owed, 18)} USDT`);

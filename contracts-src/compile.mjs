@@ -2,8 +2,9 @@ import solc from "solc";
 import fs from "fs";
 import path from "path";
 
-const files = { "OxyloanInvest.sol": fs.readFileSync("OxyloanInvest.sol", "utf8") };
-if (process.env.WITH_MOCK === "1") files["test/MockUSDT.sol"] = fs.readFileSync("test/MockUSDT.sol", "utf8");
+const MAIN = process.env.CONTRACT || "OxyloanInvestV2";
+const files = { [`${MAIN}.sol`]: fs.readFileSync(`${MAIN}.sol`, "utf8") };
+if (process.env.WITH_MOCK === "1") for (const m of ["test/Mocks.sol", "test/MockUSDT.sol"]) files[m] = fs.readFileSync(m, "utf8");
 const sources = Object.fromEntries(Object.entries(files).map(([k, v]) => [k, { content: v }]));
 const settings = { optimizer: { enabled: true, runs: 200 }, evmVersion: "paris", outputSelection: { "*": { "*": ["abi", "evm.bytecode.object"] } } };
 const used = {};
@@ -25,5 +26,5 @@ for (const [file, cs] of Object.entries(out.contracts)) for (const [name, c] of 
   console.log("compiled", name);
 }
 // File for BscScan -> Verify -> "Solidity (Standard-Json-Input)"
-fs.writeFileSync("build/standard-input.json", JSON.stringify({ language: "Solidity", sources: { "OxyloanInvest.sol": sources["OxyloanInvest.sol"], ...used }, settings: { optimizer: settings.optimizer, evmVersion: settings.evmVersion, outputSelection: { "*": { "*": ["abi", "evm.bytecode", "evm.deployedBytecode", "metadata"] } } } }, null, 2));
+fs.writeFileSync("build/standard-input.json", JSON.stringify({ language: "Solidity", sources: { [`${MAIN}.sol`]: sources[`${MAIN}.sol`], ...used }, settings: { optimizer: settings.optimizer, evmVersion: settings.evmVersion, outputSelection: { "*": { "*": ["abi", "evm.bytecode", "evm.deployedBytecode", "metadata"] } } } }, null, 2));
 console.log("wrote build/standard-input.json (solc " + solc.version() + ")");

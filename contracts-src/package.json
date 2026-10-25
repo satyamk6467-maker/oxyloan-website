@@ -12,6 +12,7 @@
   "scripts": {
     "compile": "node compile.mjs",
     "test": "WITH_MOCK=1 node compile.mjs && node test/run.mjs",
+    "test:v1": "CONTRACT=OxyloanInvest WITH_MOCK=1 node compile.mjs && node test/run-v1.mjs",
     "deploy": "node deploy.mjs",
     "deploy:live": "CONFIRM=yes node deploy.mjs"
   }

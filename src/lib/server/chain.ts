@@ -12,6 +12,7 @@ export const publicClient = createPublicClient({
 export type ParsedInvest = {
   tx_hash: string; log_index: number; block_number: number; investment_id: number;
   investor: string; referrer: string | null; amount: string; management_amount: string; referral_amount: string; swap_amount: string;
+  oxyloan_locked: string; // OXYLOAN locked in the v2 contract for this investment (swap already done on-chain)
 };
 export type ParsedRef = { investor: string; referrer: string; tx_hash: string; block_number: number };
 
@@ -31,6 +32,7 @@ export function parseLogs(logs: Log[]): { investments: ParsedInvest[]; referrals
         investment_id: Number(a.id), investor: lower(a.investor), referrer: a.referrer === ZERO ? null : lower(a.referrer),
         amount: a.amount.toString(), management_amount: a.managementAmount.toString(),
         referral_amount: a.referralAmount.toString(), swap_amount: a.swapAmount.toString(),
+        oxyloan_locked: a.oxyloanReceived.toString(),
       });
     } else if (e.eventName === "ReferrerSet") {
       referrals.push({ investor: lower(e.args.investor), referrer: lower(e.args.referrer), tx_hash: e.transactionHash, block_number: Number(e.blockNumber) });

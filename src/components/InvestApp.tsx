@@ -3,12 +3,12 @@ import { useEffect, useMemo, useState } from "react";
 import { useAccount, usePublicClient, useReadContract, useSwitchChain, useWriteContract, useDisconnect, useSignMessage, useWatchAsset, useBalance } from "wagmi";
 import { useOpen } from "@/lib/useOpen";
 import { useQuery } from "@tanstack/react-query";
-import { formatUnits, isAddress, parseUnits, zeroAddress, type Address } from "viem";
+import { formatUnits, isAddress, parseEventLogs, parseUnits, zeroAddress, type Address } from "viem";
 import dynamic from "next/dynamic";
 const WorldBackground = dynamic(() => import("./WorldBackground"), { ssr: false });
 import { claimMessage } from "@/lib/claim";
 import {
-  FEE_PCT, INVEST_CONTRACT, IS_LIVE, MIN_INVEST_USDT, OXYLOAN, PANCAKE_ROUTER, REFERRAL_PCT, USDT,
+  FEE_PCT, INVEST_CONTRACT, IS_LIVE, MIN_INVEST_USDT, OXYLOAN, PANCAKE_ROUTER, REFERRAL_PCT, RELEASE_DAYS, SLIPPAGE_PCT, USDT,
   erc20Abi, investAbi, routerAbi, short,
 } from "@/lib/config";
 
@@ -51,7 +51,7 @@ export default function InvestApp() {
   const { watchAsset } = useWatchAsset();
 
   const [amount, setAmount] = useState("");
-  const [busy, setBusy] = useState<"" | "approve" | "invest">("");
+  const [busy, setBusy] = useState<"" | "approve" | "invest" | "claim">("");
   const [msg, setMsg] = useState<{ type: "ok" | "err" | "info"; text: string; tx?: string } | null>(null);
   const [storedRef, setStoredRef] = useState<string>("");
   const [copied, setCopied] = useState(false);
@@ -89,9 +89,14 @@ export default function InvestApp() {
 
   const fee = (amt * BigInt(FEE_PCT)) / 100n;
   const refBonus = referrer ? (amt * BigInt(REFERRAL_PCT)) / 100n : 0n;
-  const swapAmt = amt - fee;
+  const swapAmt = amt - fee - refBonus; // referral comes out of the swap half; no referrer = full half is swapped for you
   const quote = useReadContract({ address: PANCAKE_ROUTER, abi: routerAbi, functionName: "getAmountsOut", args: [swapAmt, [USDT, OXYLOAN]], chainId: BSC, query: { enabled: swapAmt > 0n, retry: false } });
   const estOut = (quote.data as bigint[] | undefined)?.[1];
+  const minOut = estOut ? (estOut * BigInt(100 - SLIPPAGE_PCT)) / 100n : 0n;
+
+  // on-chain lock: total received, claimed, claimable now, still locked, next unlock (unix seconds)
+  const acct = useReadContract({ address: (INVEST_CONTRACT || zeroAddress) as Address, abi: investAbi, functionName: "accountOf", args: [address ?? zeroAddress], chainId: BSC, query: { enabled, refetchInterval: 30_000 } });
+  const [lkTotal, lkClaimed, lkClaimable, lkLocked, lkNext] = (acct.data as readonly bigint[] | undefined) ?? [];
 
   const stats = useQuery({ queryKey: ["stats"], queryFn: () => fetch("/api/stats").then((r) => r.json()), refetchInterval: 60_000 });
   const me = useQuery({ queryKey: ["me", address], enabled: !!address, queryFn: () => fetch(`/api/me?address=${address}`, { cache: "no-store" }).then((r) => r.json()), refetchInterval: 45_000 });
@@ -100,7 +105,7 @@ export default function InvestApp() {
   const balance = bal.data as bigint | undefined;
   const tooLow = amt > 0n && amt < min;
   const noFunds = amt > 0n && balance !== undefined && amt > balance;
-  const canAct = isConnected && !wrongNet && IS_LIVE && !paused.data && amt >= min && !noFunds && !busy;
+  const canAct = isConnected && !wrongNet && IS_LIVE && !paused.data && amt >= min && !noFunds && !busy && minOut > 0n;
 
   async function approve() {
     if (!publicClient) return;
@@ -120,13 +125,18 @@ export default function InvestApp() {
     setMsg(null); setBusy("invest");
     try {
       setMsg({ type: "info", text: "Confirm the investment in your wallet…" });
-      const hash = await writeContractAsync({ address: INVEST_CONTRACT as Address, abi: investAbi, functionName: "invest", args: [amt, (referrer || zeroAddress) as Address], chainId: BSC });
+      const hash = await writeContractAsync({ address: INVEST_CONTRACT as Address, abi: investAbi, functionName: "invest", args: [amt, (referrer || zeroAddress) as Address, minOut], chainId: BSC });
       setMsg({ type: "info", text: "Transaction sent, waiting for confirmation…", tx: hash });
       const rc = await publicClient.waitForTransactionReceipt({ hash });
       if (rc.status !== "success") throw new Error("Transaction failed on-chain.");
       setAmount("");
-      setMsg({ type: "ok", text: `Investment confirmed: ${fmt(amt)} USDT. Saving it to your account…`, tx: hash });
-      bal.refetch(); allowance.refetch(); onchainRef.refetch();
+      const ev = parseEventLogs({ abi: investAbi, logs: rc.logs, eventName: "Invested" })[0] as { args: { oxyloanReceived: bigint } } | undefined;
+      const got = ev?.args.oxyloanReceived;
+      const doneText = got !== undefined
+        ? `Investment confirmed: ${fmt(amt)} USDT. You received ${fmt(got, 4)} OXYLOAN after the swap. It is locked and 10% unlocks every day for ${RELEASE_DAYS} days.`
+        : `Investment confirmed: ${fmt(amt)} USDT. Your OXYLOAN is locked and 10% unlocks every day for ${RELEASE_DAYS} days.`;
+      setMsg({ type: "ok", text: doneText, tx: hash });
+      bal.refetch(); allowance.refetch(); onchainRef.refetch(); acct.refetch();
       // record it right away (retry a few times in case the data node is a block behind)
       let saved = false;
       for (let i = 0; i < 4 && !saved; i++) {
@@ -137,7 +147,7 @@ export default function InvestApp() {
         if (!saved) await new Promise((res) => setTimeout(res, 1500));
       }
       await Promise.all([me.refetch(), stats.refetch()]);
-      setMsg({ type: "ok", text: saved ? `Investment saved: ${fmt(amt)} USDT. Your OXYLOAN is credited as soon as the swap runs (every minute or so), then you can withdraw it to your wallet.` : `Investment confirmed on-chain: ${fmt(amt)} USDT. It will show in your account within a few minutes.`, tx: hash });
+      if (!saved) setMsg({ type: "ok", text: `${doneText} Your history will update within a few minutes.`, tx: hash });
     } catch (e) { setMsg({ type: "err", text: niceError(e) }); } finally { setBusy(""); }
   }
 
@@ -155,6 +165,19 @@ export default function InvestApp() {
   const credited = BigInt(m?.oxyloan_credited ?? "0");
   const opensAt = m?.claim_opens_at ? new Date(m.claim_opens_at) : null;
   const notOpen = !!opensAt && opensAt.getTime() > Date.now();
+
+  async function claimLocked() {
+    if (!publicClient) return;
+    setClaimMsg(null); setBusy("claim");
+    try {
+      setClaimMsg({ type: "info", text: "Confirm the claim in your wallet (small BNB network fee)…" });
+      const hash = await writeContractAsync({ address: INVEST_CONTRACT as Address, abi: investAbi, functionName: "claim", chainId: BSC });
+      const rc = await publicClient.waitForTransactionReceipt({ hash });
+      if (rc.status !== "success") throw new Error("Transaction failed on-chain.");
+      setClaimMsg({ type: "ok", text: `Claimed ${fmt(lkClaimable, 4)} OXYLOAN to your wallet.` });
+      acct.refetch();
+    } catch (e) { setClaimMsg({ type: "err", text: niceError(e) }); } finally { setBusy(""); }
+  }
 
   async function claim() {
     if (!address) return;
@@ -196,7 +219,7 @@ export default function InvestApp() {
         <section className="hero">
           <span className="pill"><span className="dot" />Live on BNB Smart Chain</span>
           <h1>Invest USDT.<br /><span className="grad">Grow with OXYLOAN.</span></h1>
-          <p className="lead">Connect your wallet, approve USDT (BEP-20) and invest. Half of your investment is converted to OXYLOAN on PancakeSwap and credited to your account, and you can withdraw it to your wallet from the Your account card. Referral bonuses are paid instantly on-chain.</p>
+          <p className="lead">Connect your wallet, approve USDT (BEP-20) and invest. Your OXYLOAN is bought on PancakeSwap in the same transaction and locked in the smart contract. 10% unlocks every day, and you claim it to your wallet from the Your account card. Referral bonuses are paid instantly on-chain.</p>
           <div className="stats">
             <div><b>{stats.data ? big(stats.data.total_raised) : "–"}</b><span>USDT invested</span></div>
             <div><b>{stats.data?.investors ?? "–"}</b><span>Investors</span></div>
@@ -218,11 +241,11 @@ export default function InvestApp() {
 
             <div className="break">
               <div className="brow"><span>Platform fee ({FEE_PCT}%)</span><b>{amt ? fmt(fee) : "–"} USDT</b></div>
-              {referrer ? <div className="brow sub"><span>↳ of which referral bonus to {short(referrer)} ({REFERRAL_PCT}%)</span><b>{fmt(refBonus)} USDT</b></div> : null}
-              <div className="brow"><span>Swapped to OXYLOAN ({100 - FEE_PCT}%)</span><b>{amt ? fmt(swapAmt) : "–"} USDT</b></div>
-              <div className="brow total"><span>OXYLOAN credited to your account (estimate)</span><b>{estOut ? fmt(estOut, 4) : "–"} OXYLOAN</b></div>
+              {referrer ? <div className="brow"><span>Referral bonus to {short(referrer)} ({REFERRAL_PCT}%)</span><b>{fmt(refBonus)} USDT</b></div> : null}
+              <div className="brow"><span>Swapped to OXYLOAN on PancakeSwap ({100 - FEE_PCT - (referrer ? REFERRAL_PCT : 0)}%)</span><b>{amt ? fmt(swapAmt) : "–"} USDT</b></div>
+              <div className="brow total"><span>OXYLOAN you receive, locked (estimate)</span><b>{estOut ? fmt(estOut, 4) : "–"} OXYLOAN</b></div>
             </div>
-            <p className="fine">The platform fee covers operations, technical support, compliance and green initiatives. It is sent straight to the management wallet by the smart contract. OXYLOAN is credited to your account after the swap completes, then you withdraw it to your wallet.</p>
+            <p className="fine">The platform fee covers operations, technical support, compliance and green initiatives. In the same transaction the smart contract sends the fee to the management wallet, pays the referral bonus, swaps the rest to OXYLOAN on PancakeSwap and locks it for you. 10% of your OXYLOAN unlocks every day, so all of it can be claimed after {RELEASE_DAYS} days. If the price moves more than {SLIPPAGE_PCT}% before your transaction confirms, it is cancelled and nothing is taken.</p>
 
             {cta}
             {isConnected && !wrongNet && lowGas && <div className="msg err" role="alert">This wallet has almost no BNB. Network fees on BNB Smart Chain are paid in BNB, not USDT. Add about 0.002 BNB, then try again.</div>}
@@ -243,18 +266,27 @@ export default function InvestApp() {
                 <>
                 <div className="kv">
                   <div><span>Invested</span><b>{big(m?.invested)} USDT</b></div>
-                  <div><span>OXYLOAN credited</span><b>{big4(m?.oxyloan_credited)}</b></div>
-                  <div className="hi"><span>Ready to withdraw</span><b>{big4(m?.claimable)}</b></div>
-                  <div><span>Payout in progress</span><b>{big4(m?.claim_pending)}</b></div>
-                  <div><span>Already withdrawn</span><b>{big4(m?.claimed)}</b></div>
+                  <div><span>OXYLOAN received</span><b>{fmt(lkTotal, 4)}</b></div>
+                  <div><span>Still locked</span><b>{fmt(lkLocked, 4)}</b></div>
+                  <div className="hi"><span>Ready to claim</span><b>{fmt(lkClaimable, 4)}</b></div>
+                  <div><span>Already claimed</span><b>{fmt(lkClaimed, 4)}</b></div>
                   <div><span>Referral earned</span><b>{big(m?.referral_earned)} USDT</b></div>
                 </div>
-                <button className="btn btn-primary wide" style={{ marginTop: 14 }} disabled={claiming || notOpen || claimable === 0n} onClick={claim}>
-                  {claiming ? "Working…" : notOpen ? `Withdrawals open ${opensAt!.toLocaleDateString()}` : claimable > 0n ? `Withdraw ${fmt(claimable, 4)} OXYLOAN to my wallet` : credited > 0n ? "Nothing left to withdraw" : "OXYLOAN shows here after your swap"}
+                <button className="btn btn-primary wide" style={{ marginTop: 14 }} disabled={!!busy || !lkClaimable} onClick={claimLocked}>
+                  {busy === "claim" ? "Claiming…" : lkClaimable ? `Claim ${fmt(lkClaimable, 4)} OXYLOAN to my wallet` : lkLocked ? "Nothing unlocked yet" : "Your OXYLOAN shows here after you invest"}
                 </button>
+                {lkNext ? <p className="fine">Next 10% unlock: <b>{new Date(Number(lkNext) * 1000).toLocaleString()}</b></p> : null}
                 {claimMsg && <div className={`msg ${claimMsg.type}`} role="status">{claimMsg.text}</div>}
-                <p className="fine">Withdrawing sends OXYLOAN to this wallet. It costs you no gas; payouts run every minute or so.</p>
+                <p className="fine">Claiming sends your unlocked OXYLOAN straight from the smart contract to this wallet. It needs a small BNB network fee.</p>
                 <button className="btn wide ghostbtn" onClick={addToWallet}>Add OXYLOAN to my wallet</button>
+                {credited > 0n && (
+                  <div style={{ marginTop: 14 }}>
+                    <p className="fine"><b>Earlier investments (old contract):</b> {big4(m?.oxyloan_credited)} OXYLOAN credited, {big4(m?.claimable)} ready, {big4(m?.claimed)} withdrawn.</p>
+                    <button className="btn wide" disabled={claiming || notOpen || claimable === 0n} onClick={claim}>
+                      {claiming ? "Working…" : notOpen ? `Withdrawals open ${opensAt!.toLocaleDateString()}` : claimable > 0n ? `Withdraw ${fmt(claimable, 4)} OXYLOAN (earlier investments)` : "Nothing left to withdraw"}
+                    </button>
+                  </div>
+                )}
                 {!!m?.claims?.length && (
                   <ul className="tx" style={{ marginTop: 12 }}>
                     {m.claims.map((c) => (
@@ -296,7 +328,7 @@ export default function InvestApp() {
         </main>
 
         <section className="steps">
-          {["Connect your wallet", "Approve USDT (BEP-20)", "Invest in one transaction", "Withdraw OXYLOAN to your wallet"].map((s, i) => (
+          {["Connect your wallet", "Approve USDT (BEP-20)", "Invest: swapped and locked in one transaction", "Claim 10% every day"].map((s, i) => (
             <div key={s} className="step glass"><span>{i + 1}</span>{s}</div>
           ))}
         </section>
